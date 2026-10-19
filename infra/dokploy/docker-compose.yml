@@ -1,0 +1,238 @@
+# Rakazo on Dokploy: a "Docker Compose" service built from this repository, with local
+# Docker computers for the bots. Setup steps are in infra/dokploy/README.md.
+#
+# Dokploy writes the Environment tab to a .env file next to this compose file; api and
+# worker load all of it, the other services get only what they reference below.
+#
+# Requirements on the Dokploy side:
+# - Compose Path: ./infra/dokploy/docker-compose.yml
+# - Advanced > Isolated Deployments: ON. Dokploy then puts every service on one
+#   per-app network and connects Traefik to it, so this file declares no networks.
+# - One domain on the `web` service, port 5173. web proxies /api and /rpc to the API.
+#
+# Nothing publishes a host port. The supervisor holds the Docker socket, which is
+# root-equivalent on the host, and must never get a domain.
+
+x-app-build: &app-build
+  context: ../..
+  dockerfile: infra/dokploy/Dockerfile
+  args:
+    GIT_SHA: ${GIT_SHA:-}
+
+x-app-image: &app-image ${RAKAZO_IMAGE:-rakazo-app}:${RAKAZO_IMAGE_TAG:-dokploy}
+
+x-logging: &logging
+  driver: local
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-app-env: &app-env
+  NODE_ENV: production
+  DATABASE_URL: postgres://${POSTGRES_USER:-rakazo}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-rakazo}
+  DATA_DIR: /data
+  SANDBOX_PROVIDER: ${SANDBOX_PROVIDER:-docker}
+  SANDBOX_SUPERVISOR_URL: http://supervisor:7091
+  SANDBOX_SUPERVISOR_TOKEN: ${SANDBOX_SUPERVISOR_TOKEN:?Set SANDBOX_SUPERVISOR_TOKEN}
+  SANDBOX_MAX_COMPUTERS_PER_USER: ${SANDBOX_MAX_COMPUTERS_PER_USER:-0}
+  SANDBOX_IDLE_MS: ${SANDBOX_IDLE_MS:-600000}
+  COMPUTER_MAX_ACTIVE_MS: ${COMPUTER_MAX_ACTIVE_MS:-7200000}
+  SECRET_STORE: ${SECRET_STORE:-encrypted}
+  CLOUD_AGENT_PROVIDER: ${CLOUD_AGENT_PROVIDER:-none}
+  WAKEUP_DRIVER: graphile
+  AGENT_RUNTIME: pi
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:16@sha256:e17e86066e5ef83e0952a9347f5c792b7ece00972e2aa787a6986f471b3dd3d5}
+    restart: unless-stopped
+    logging: *logging
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 200
+    mem_limit: 2g
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rakazo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-rakazo}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rakazo} -d ${POSTGRES_DB:-rakazo}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # One-shot stub whose build produces the image the supervisor starts bot computers from.
+  computer:
+    image: ${RAKAZO_COMPUTER_IMAGE:-rakazo-computer}:${RAKAZO_COMPUTER_IMAGE_TAG:-dokploy}
+    build:
+      context: ../sandboxes/computer
+    pull_policy: build
+    command: ["true"]
+    restart: "no"
+
+  data-init:
+    image: ${BUSYBOX_IMAGE:-busybox:1}
+    command: ["chown", "-R", "1000:1000", "/data"]
+    restart: "no"
+    volumes:
+      - appdata:/data
+
+  supervisor:
+    image: *app-image
+    build: *app-build
+    pull_policy: build
+    restart: unless-stopped
+    command: ["pnpm", "--filter", "@rakazo/sandbox-supervisor", "start"]
+    init: true
+    user: root
+    logging: *logging
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 512m
+    environment:
+      NODE_ENV: production
+      MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-10}
+      DATA_DIR: /data
+      SUPERVISOR_HOST: "0.0.0.0"
+      SUPERVISOR_PORT: "7091"
+      DOCKER_SOCKET: /var/run/docker.sock
+      RAKAZO_COMPUTER_IMAGE: ${RAKAZO_COMPUTER_IMAGE:-rakazo-computer}:${RAKAZO_COMPUTER_IMAGE_TAG:-dokploy}
+      RAKAZO_COMPUTER_MEMORY: ${RAKAZO_COMPUTER_MEMORY:-2g}
+      RAKAZO_COMPUTER_CPUS: ${RAKAZO_COMPUTER_CPUS:-2}
+      RAKAZO_COMPUTER_PIDS_LIMIT: ${RAKAZO_COMPUTER_PIDS_LIMIT:-2048}
+      SANDBOX_COMMAND_TIMEOUT_MS: ${SANDBOX_COMMAND_TIMEOUT_MS:-300000}
+      SANDBOX_TEAM_SCREEN_LIMIT: ${SANDBOX_TEAM_SCREEN_LIMIT:-0}
+      SANDBOX_MAX_COMPUTERS_PER_SPACE: ${SANDBOX_MAX_COMPUTERS_PER_SPACE:-0}
+      SANDBOX_SUPERVISOR_TOKEN: ${SANDBOX_SUPERVISOR_TOKEN:?Set SANDBOX_SUPERVISOR_TOKEN}
+      SANDBOX_SCREEN_NETWORK: isolated
+      SANDBOX_COMPUTER_EGRESS: ${SANDBOX_COMPUTER_EGRESS:-open}
+      SANDBOX_COMPUTER_DNS: ${SANDBOX_COMPUTER_DNS:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - appdata:/data
+    depends_on:
+      computer:
+        condition: service_completed_successfully
+      data-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:7091/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  api:
+    image: *app-image
+    build: *app-build
+    pull_policy: build
+    restart: unless-stopped
+    command:
+      - bash
+      - -lc
+      - pnpm --filter @rakazo/db exec prisma migrate deploy && pnpm --filter @rakazo/api start
+    init: true
+    logging: *logging
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    mem_limit: 1536m
+    env_file:
+      - .env
+    environment:
+      <<: *app-env
+      API_HOST: "0.0.0.0"
+      BETTER_AUTH_URL: https://${RAKAZO_HOST:?Set RAKAZO_HOST}
+      WEB_ORIGIN: https://${RAKAZO_HOST:?Set RAKAZO_HOST}
+      API_URL: https://${RAKAZO_HOST:?Set RAKAZO_HOST}
+    volumes:
+      - appdata:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      data-init:
+        condition: service_completed_successfully
+      supervisor:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3100/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  worker:
+    image: *app-image
+    build: *app-build
+    pull_policy: build
+    restart: unless-stopped
+    command: ["pnpm", "--filter", "@rakazo/worker", "start"]
+    init: true
+    logging: *logging
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 512
+    mem_limit: 2g
+    env_file:
+      - .env
+    environment:
+      <<: *app-env
+      # The worker never signs sessions or proxies screens; keep those secrets out of it.
+      BETTER_AUTH_SECRET: ""
+      SCREEN_PROXY_SECRET: ""
+      OIDC_CLIENT_SECRET: ""
+    volumes:
+      - appdata:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      data-init:
+        condition: service_completed_successfully
+      supervisor:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+  # The only service that gets a domain in Dokploy (port 5173).
+  web:
+    image: *app-image
+    build: *app-build
+    pull_policy: build
+    restart: unless-stopped
+    command: ["pnpm", "--filter", "@rakazo/web", "preview", "--host", "0.0.0.0", "--port", "5173"]
+    init: true
+    logging: *logging
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    mem_limit: 512m
+    expose:
+      - "5173"
+    environment:
+      NODE_ENV: production
+      API_PROXY_TARGET: http://api:3100
+      RAKAZO_HOST: ${RAKAZO_HOST:?Set RAKAZO_HOST}
+      SCREEN_PROXY_SECRET: ${SCREEN_PROXY_SECRET:?Set SCREEN_PROXY_SECRET}
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  appdata:
