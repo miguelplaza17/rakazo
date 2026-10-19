@@ -26,6 +26,8 @@ export const RoutineRunSchema = z.object({
   groupId: Id.nullable(),
   status: RunStatus,
   error: z.string().nullable(),
+  /** The model the run resolved to, including a backup model it fell back to. */
+  model: z.object({ provider: z.string(), id: z.string() }).nullable(),
   createdAt: IsoDate,
   startedAt: IsoDate.nullable(),
   completedAt: IsoDate.nullable(),

@@ -185,4 +185,31 @@ describe("routine history", () => {
       messageId: "group-reply",
     });
   });
+  it("returns the model each run resolved to", async () => {
+    const { prisma, runs, messages } = fixture();
+    const base = {
+      botId: "bot-1",
+      threadId: "thread-1",
+      thread: { groupId: null },
+      status: "completed",
+      createdAt: at,
+      startedAt: at,
+      completedAt: at,
+    };
+    runs.mockResolvedValue([
+      { ...base, id: "resolved", modelProvider: "anthropic", modelId: "claude-haiku-5-5" },
+      { ...base, id: "queued", modelProvider: null, modelId: null },
+    ]);
+    messages.mockResolvedValue([]);
+    const history = RoutineHistorySchema.parse(await listRoutineRuns(prisma, actor, "routine-1"));
+    expect(history.runs.map((run) => run.model)).toEqual([
+      { provider: "anthropic", id: "claude-haiku-5-5" },
+      null,
+    ]);
+    expect(runs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({ modelProvider: true, modelId: true }),
+      }),
+    );
+  });
 });

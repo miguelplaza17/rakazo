@@ -233,7 +233,19 @@ export function RoutineRunHistory({ routineId }: { routineId: string }) {
                   </div>
                 ) : null}
                 <div className="mt-1 flex items-center justify-between gap-2">
-                  <span>{duration}</span>
+                  <span className="flex min-w-0 items-center gap-2">
+                    {duration ? <span className="shrink-0">{duration}</span> : null}
+                    {run.model ? (
+                      // The model the run resolved to, which can differ from the bot's choice.
+                      <span
+                        className="truncate text-muted-foreground"
+                        title={`${run.model.provider}/${run.model.id}`}
+                        data-testid="routine-run-model"
+                      >
+                        {run.model.id}
+                      </span>
+                    ) : null}
+                  </span>
                   {chatTo ? (
                     <Link to={chatTo} className="text-foreground underline underline-offset-2">
                       <Trans>View chat</Trans>
