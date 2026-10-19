@@ -32,6 +32,7 @@ const run: RoutineRun = {
   groupId: null,
   status: "completed",
   error: null,
+  model: null,
   createdAt: "2026-01-02T12:00:00Z",
   startedAt: "2026-01-02T12:00:00Z",
   completedAt: "2026-01-02T12:01:22Z",
@@ -362,6 +363,30 @@ it("omits error UI for a completed run carrying a stale error", async () => {
     expect(view.container.querySelector("details")).toBeNull();
     expect(view.container.textContent).not.toContain("Your model provider");
     expect(view.container.textContent).not.toContain("504: request timed out");
+  } finally {
+    await view.close();
+  }
+});
+
+it("shows the model a run resolved to", async () => {
+  api.history.mockResolvedValue(
+    page([{ ...run, model: { provider: "openrouter", id: "deepseek/deepseek-v4.1-flash" } }]),
+  );
+  const view = await mounted();
+  try {
+    const model = view.container.querySelector('[data-testid="routine-run-model"]');
+    expect(model?.textContent).toBe("deepseek/deepseek-v4.1-flash");
+    expect(model?.getAttribute("title")).toBe("openrouter/deepseek/deepseek-v4.1-flash");
+  } finally {
+    await view.close();
+  }
+});
+it("shows no model before a run resolves one", async () => {
+  api.history.mockResolvedValue(page([run]));
+  const view = await mounted();
+  try {
+    expect(view.container.querySelectorAll("li")).toHaveLength(1);
+    expect(view.container.querySelector('[data-testid="routine-run-model"]')).toBeNull();
   } finally {
     await view.close();
   }

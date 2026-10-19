@@ -43,6 +43,8 @@ export async function listRoutineRuns(
       thread: { select: { groupId: true } },
       status: true,
       error: true,
+      modelProvider: true,
+      modelId: true,
       createdAt: true,
       startedAt: true,
       completedAt: true,
@@ -77,6 +79,8 @@ export async function listRoutineRuns(
       groupId: run.thread.groupId,
       status: run.status as RoutineRun["status"],
       error: runFailureError({ type: `run.${run.status}`, payload: { error: run.error } }),
+      model:
+        run.modelProvider && run.modelId ? { provider: run.modelProvider, id: run.modelId } : null,
       createdAt: run.createdAt.toISOString(),
       startedAt: run.startedAt?.toISOString() ?? null,
       completedAt: run.completedAt?.toISOString() ?? null,
