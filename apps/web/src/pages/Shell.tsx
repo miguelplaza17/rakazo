@@ -223,7 +223,6 @@ import { localTimezone } from "../lib/local-timezone";
 import { copyableMessageText } from "../lib/message-text";
 import { messageProviderLabel } from "../lib/messaging";
 import { parseModelOptionKey } from "../lib/model-catalog";
-import { noteOpenOverlay, takeOverlayResume } from "../lib/overlay-resume";
 import {
   isFileDrag,
   isFilePaste,
@@ -774,29 +773,6 @@ function SpaceShell() {
     setSettingsOpen(false);
     setSettingsSpaceId(null);
   }, [settingsSpaceGone]);
-  // Layout effect: the overlay's chunk request starts in render, so it must be recorded
-  // before that request can fail and trigger the preload recovery reload.
-  useLayoutEffect(() => {
-    noteOpenOverlay(
-      settingsOpen
-        ? { overlay: "settings", section: settingsSection }
-        : messagingSettingsOpen
-          ? { overlay: "messaging" }
-          : mcpOpen
-            ? { overlay: "mcp" }
-            : pluginsOpen
-              ? { overlay: "plugins" }
-              : null,
-    );
-  }, [settingsOpen, settingsSection, messagingSettingsOpen, mcpOpen, pluginsOpen]);
-  // One-shot: reopens the overlay armed by the preload recovery reload.
-  useEffect(() => {
-    const resume = takeOverlayResume();
-    if (resume?.overlay === "settings") openSettings(resume.section);
-    else if (resume?.overlay === "messaging") setMessagingSettingsOpen(true);
-    else if (resume?.overlay === "mcp") setMcpOpen(true);
-    else if (resume?.overlay === "plugins") setPluginsOpen(true);
-  }, []);
   const [keepComputerRecovery, setKeepComputerRecovery] = useState(false);
   const recoveryHoldTimer = useRef<number | undefined>(undefined);
   const showComputerRecoveryHint =

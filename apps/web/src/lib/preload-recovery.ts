@@ -1,5 +1,3 @@
-import { armOverlayResume } from "./overlay-resume";
-
 const PRELOAD_RECOVERY_KEY = "rk:preload-recovery";
 const PRELOAD_RECOVERY_COOLDOWN_MS = 30_000;
 
@@ -29,8 +27,6 @@ export function installPreloadRecovery(target: PreloadRecoveryWindow = window): 
     if (!target.navigator.onLine || target.sessionStorage.getItem(PRELOAD_RECOVERY_KEY)) return;
     event.preventDefault();
     target.sessionStorage.setItem(PRELOAD_RECOVERY_KEY, "1");
-    // The failed chunk is usually the overlay the user just opened; reopen it after the reload.
-    armOverlayResume(target.sessionStorage);
     target.location.reload();
   };
 
