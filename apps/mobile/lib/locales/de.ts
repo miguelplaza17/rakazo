@@ -1,4 +1,6 @@
 export const DE_MESSAGES: Record<string, string> = {
+  Close: "Schließen",
+  Link: "Link",
   "Lets this bot organize, retune and schedule the bots it creates. You approve each change.":
     "Erlaubt diesem Bot, die von ihm erstellten Bots zu organisieren, anzupassen und zu planen. Du genehmigst jede Änderung.",
   "Too many attempts. Try again in a few minutes.":
@@ -338,6 +340,8 @@ export const DE_MESSAGES: Record<string, string> = {
   Profile: "Profil",
   Routines: "Routinen",
   "Could not load routines": "Routinen konnten nicht geladen werden",
+  "Get notified when this Bot finishes or needs input":
+    "Benachrichtigung, wenn dieser Bot fertig ist oder Eingabe braucht",
   // app/computer.tsx
   "Booting {label}": "{label} wird gestartet",
   Bot: "Bot",
