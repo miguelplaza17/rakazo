@@ -187,6 +187,9 @@ const EXTENSION_MIME_TYPES: Record<string, AttachmentMimeType> = {
   ".zip": "application/zip",
 };
 
+/** File pickers filter by these as well as by MIME type: an OS may not map `.md` to text/markdown. */
+export const ATTACHMENT_FILE_EXTENSIONS = Object.keys(EXTENSION_MIME_TYPES);
+
 const MIME_TYPE_EXTENSIONS: Record<AttachmentMimeType, string> = {
   "audio/mpeg": ".mp3",
   "audio/wav": ".wav",

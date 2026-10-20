@@ -36,6 +36,7 @@ import {
 } from "@rakazo/contracts";
 import type { ComposerMention, FoldedTranscript, SlashActionId } from "@rakazo/core";
 import {
+  ATTACHMENT_FILE_EXTENSIONS,
   attachmentsForThread,
   buildComposerMentionOptions,
   clampMentionHighlightIndex,
@@ -365,7 +366,9 @@ type PendingBrowserNotification = {
   groupNotification: boolean;
 };
 
-const ATTACHMENT_ACCEPT = [...ATTACHMENT_ALLOWED_MIME_TYPES, ".zip"].join(",");
+const ATTACHMENT_ACCEPT = [...ATTACHMENT_ALLOWED_MIME_TYPES, ...ATTACHMENT_FILE_EXTENSIONS].join(
+  ",",
+);
 /** Identity colour for bots the roster no longer knows about. */
 const FALLBACK_BOT_COLOR = "#85858A";
 const THREAD_SNAPSHOT_TIMEOUT_MS = 2_000;

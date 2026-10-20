@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ATTACHMENT_FILE_EXTENSIONS,
   AttachmentValidationError,
   attachmentExtensionForMimeType,
   attachmentsForBot,
@@ -12,6 +13,16 @@ import {
 } from "./attachments.js";
 
 describe("attachment helpers", () => {
+  it("lists a picker extension for every type it can infer from a name", () => {
+    expect(ATTACHMENT_FILE_EXTENSIONS).toEqual(
+      expect.arrayContaining([".md", ".markdown", ".zip"]),
+    );
+    for (const extension of ATTACHMENT_FILE_EXTENSIONS) {
+      expect(extension).toMatch(/^\.[a-z0-9]+$/);
+      // Markdown picked on macOS often arrives with no reported type.
+      expect(inferAttachmentMimeType(`notes${extension}`, "")).not.toBeNull();
+    }
+  });
   it.each([
     ["mp3", "audio/mpeg"],
     ["wav", "audio/wav"],
