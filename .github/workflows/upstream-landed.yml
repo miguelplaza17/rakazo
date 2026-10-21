@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   check:
@@ -15,6 +15,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Sync main with upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api -X POST "repos/${{ github.repository }}/merge-upstream" -f branch=main >/tmp/sync.json 2>/tmp/sync.err; then
+            echo "- **main** synced with upstream: $(jq -r .message /tmp/sync.json)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- **main** NOT synced (conflict or error): $(cat /tmp/sync.err)" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Add upstream and fetch
         run: |
