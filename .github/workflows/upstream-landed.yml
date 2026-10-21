@@ -38,8 +38,7 @@ jobs:
               if git log upstream/main --format=%s | grep -Fxq "$subject"; then
                 continue
               fi
-              missing="$missing
-- \`${sha:0:8}\` $subject"
+              missing="$missing"$'\n'"- \`${sha:0:8}\` $subject"
             done < <(git cherry upstream/main "origin/$ref")
             if [ -z "$missing" ]; then
               echo "- **$ref**: landed in upstream" >> "$GITHUB_STEP_SUMMARY"
