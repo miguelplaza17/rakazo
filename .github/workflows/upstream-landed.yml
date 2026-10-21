@@ -1,0 +1,49 @@
+name: Upstream landed check
+
+on:
+  schedule:
+    - cron: "0 12 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add upstream and fetch
+        run: |
+          git remote add upstream https://github.com/elie222/rakazo.git
+          git fetch --quiet upstream main
+
+      - name: Compare each branch with upstream main
+        run: |
+          {
+            echo "# Fork branches vs upstream main"
+            echo
+            echo "Commits not in upstream (by patch or by subject). Empty means everything landed."
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+          for ref in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin | sed 's#^origin/##' | grep -v -E '^(HEAD|main|backup/)'); do
+            git fetch --quiet origin "$ref" || continue
+            missing=""
+            while read -r sign sha; do
+              [ "$sign" = "+" ] || continue
+              subject=$(git log -1 --format=%s "$sha")
+              if git log upstream/main --format=%s | grep -Fxq "$subject"; then
+                continue
+              fi
+              missing="$missing
+- \`${sha:0:8}\` $subject"
+            done < <(git cherry upstream/main "origin/$ref")
+            if [ -z "$missing" ]; then
+              echo "- **$ref**: landed in upstream" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "- **$ref**: NOT in upstream:$missing" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
