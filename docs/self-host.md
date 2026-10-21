@@ -181,7 +181,8 @@ Rakazo uses two Postgres logins:
   superuser, cannot bypass row-level security, cannot create objects, and can only read and write
   the app tables.
 
-`pnpm db:migrate`, which the API's start command runs, applies the migrations and the job queue
+`pnpm db:migrate` (in containers, its prebuilt form `pnpm --filter @rakazo/api db:deploy`, which the
+API container runs before it starts serving) applies the migrations and the job queue
 schema as the owner. It then creates the app login named in `DATABASE_URL`, or updates its
 password, and grants it the `rakazo_app` role. When migrations run as a role without
 `CREATEROLE`, as on some managed Postgres, create the login yourself and
@@ -500,7 +501,10 @@ Error reporting to Sentry or a Sentry-compatible collector such as GlitchTip is 
 - `SENTRY_ENVIRONMENT` names the deployment. `SENTRY_RELEASE` defaults to the image's `GIT_SHA`.
 
 Neither SDK sends cookies, headers, request bodies, user identity, console output, or log context.
-Reporting is off without a DSN; an invalid DSN logs a warning and stays off.
+When `ANALYTICS_PSEUDONYM_SECRET` is set, reports carry a keyed hash of the signed-in user's id so
+the collector can count affected users; the raw id, email and IP address are never sent, and the
+browser receives its hash from the API. Reporting is off without a DSN; an invalid DSN logs a
+warning and stays off.
 
 Compose passes these into the API, worker, supervisor, and updater. Computer containers and updater
 child commands do not receive them.
@@ -609,6 +613,10 @@ RAKAZO_CSP_CONNECT_SRC=https://cloudflareinsights.com
 ```
 
 Add only origins you trust: a script these settings allow runs with the signed-in user's access.
+
+Browsers report what the policy blocks to `/api/csp-report`. The API writes one `csp.violation`
+warning per violation, with the directive, the blocked origin and the page path, so search your logs
+for it to find the origins to add.
 
 ### Security events
 
@@ -765,6 +773,27 @@ client's allowed redirect URIs. The client is stored encrypted with the server's
 credentials and survives **Disconnect**; switching to a different client drops the current grant.
 On first use the client is bound to the authorization server the MCP server pointed to, and Rakazo
 refuses to send it anywhere else afterwards. Replacing the client clears the binding.
+
+Stdio MCP servers can use OAuth too. They do not authorize themselves (the MCP spec has them
+read credentials from the environment), so Rakazo runs the flow for them. They are off unless
+the API and worker have `MCP_STDIO_ENABLED=true` and the command is listed in
+`MCP_STDIO_ALLOWED_COMMANDS`. When adding the server, enter the OAuth client, its
+**Authorization server** (the issuer, for example `https://accounts.google.com`) and the
+**Scopes**, then click **Connect OAuth** as for a remote server. Some providers issue a refresh
+token only when asked through extra parameters: for Google, set **Authorization parameters** to
+`access_type=offline&prompt=consent`. Pass the grant to the process
+through its environment variables:
+
+- A value can reference `{{oauth.access_token}}`, `{{oauth.refresh_token}}`,
+  `{{oauth.client_id}}`, `{{oauth.client_secret}}`, `{{oauth.expires_at}}` (epoch milliseconds),
+  `{{oauth.scope}}` or `{{oauth.token_type}}`, alone or inside other text.
+- A variable can be a **File** instead: its template (often JSON, with the same references) is
+  written to a private temporary directory when the process starts, and the variable receives
+  the file's path. Use this for packages that read a credentials or token file path.
+
+Rakazo refreshes the grant and restarts the process shortly before an access token it passed
+expires, so a long-running process never keeps a dead token. A process that only receives the
+refresh token refreshes on its own. Temporary files are removed when the process stops.
 
 For servers that accept standard `reasoning_effort`, enable **Supports thinking** under
 **Advanced** when connecting. The setting is saved on the connection (no env var or restart).
@@ -1167,7 +1196,7 @@ GIT_SHA=$(git rev-parse HEAD) docker compose --env-file .env -f infra/compose/do
 ```
 
 `up --wait` does not report success until the new API is healthy and the worker and web containers
-are running. The API's start command runs `pnpm db:migrate` before it serves, so migration
+are running. The API container runs the migration step (`db:deploy`) before it starts serving, so migration
 failure keeps health red. A failed CLI recreate does not auto-roll back; recover with the previous
 `RAKAZO_IMAGE_TAG` (or rebuild `local`) and `up -d --wait --pull never`.
 

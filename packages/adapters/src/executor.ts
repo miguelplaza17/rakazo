@@ -4225,6 +4225,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             groupId: thread.groupId,
             trigger: run.trigger,
             semanticMemoryEnabled,
+            semanticMemoryForgets: Boolean(semanticMemory?.forget),
             mediaImagesEnabled: Boolean(deps.artifacts && mediaGeneration?.capabilities.images),
             mediaVideoEnabled: Boolean(deps.artifacts && mediaGeneration?.capabilities.video),
             cloudAgentEnabled: cloudAgentsEnabled(cloudAgent, run.spaceId),
@@ -6072,6 +6073,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
             if (name !== "browser_snapshot") workspaceCheckpoint.markDirty();
             // Pages can echo a filled login (e.g. a username field), so scrub every page result.
             const redactions = () => [...runSecrets];
+            const desktopTools =
+              graphicalToolsAllowed && builtinOffered(disabledBuiltinTools, "computer_act");
             const tool =
               name === "browser_navigate"
                 ? browserNavigateFromTool
@@ -6081,7 +6084,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
             return computerScreenToolResult(async () => {
               const result = tool
                 ? redactConnectorPayload(
-                    await tool(browser, await getRunComputer("tool", name), context, args),
+                    await tool(browser, await getRunComputer("tool", name), context, args, {
+                      desktopTools,
+                    }),
                     redactions(),
                   )
                 : await browserActFromTool(
@@ -6090,6 +6095,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                     context,
                     args,
                     {
+                      desktopTools,
                       redactions,
                       // Team bots may send only their own folder or shared/ off the computer; a
                       // private computer's helper already confines uploads to its home folder.
@@ -8619,6 +8625,8 @@ export function selectBuiltinToolsForRun(options: {
   groupId: string | null;
   trigger: string;
   semanticMemoryEnabled: boolean;
+  /** The configured provider can forget individual facts. */
+  semanticMemoryForgets?: boolean;
   cloudAgentEnabled?: boolean;
   mediaImagesEnabled?: boolean;
   mediaVideoEnabled?: boolean;
@@ -8647,6 +8655,7 @@ export function selectBuiltinToolsForRun(options: {
         options.trigger,
       ),
       options.semanticMemoryEnabled,
+      Boolean(options.semanticMemoryForgets),
     ),
     Boolean(options.cloudAgentEnabled),
   ).filter(
