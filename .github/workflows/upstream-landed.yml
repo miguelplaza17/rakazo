@@ -21,6 +21,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh api -X POST "repos/${{ github.repository }}/merge-upstream" -f branch=main >/tmp/sync.json 2>/tmp/sync.err; then
+            cat /tmp/sync.json
             echo "- **main** synced with upstream: $(jq -r .message /tmp/sync.json)" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "- **main** NOT synced (conflict or error): $(cat /tmp/sync.err)" >> "$GITHUB_STEP_SUMMARY"
